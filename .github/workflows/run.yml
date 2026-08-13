@@ -2,8 +2,11 @@ name: 24/7 AI Signal Engine
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # විනාඩි 15න් 15ට Auto Scan වෙනවා
-  workflow_dispatch: # Manual එකපාරක් Run කරන්නත් පුළුවන්
+    - cron: '*/15 * * * *' # Every 15 mins
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -13,5 +16,5 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - run: pip install requests pandas ta
+      - run: pip install requests pandas ta numpy
       - run: python bot.py
