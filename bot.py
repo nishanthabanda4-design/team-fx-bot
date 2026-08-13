@@ -6,17 +6,46 @@ import ta
 # SheetBest API URL
 SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
 
-# High Liquidity Pairs
-SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']
+def get_top_volume_usdt_pairs(limit=50):
+    """
+    Binance එකේ ඒ මොහොතේ Trade Volume එක වැඩිම (Traders ලා වැඩිපුරම Trade කරන)
+    Top USDT Pairs auto-fetch කරගැනීම.
+    """
+    try:
+        url = "https://api.binance.com/api/v3/ticker/24hr"
+        res = requests.get(url, timeout=10).json()
+        
+        # USDT Pairs පමණක් තෝරාගැනීම (Leveraged tokens අයින් කරයි)
+        usdt_pairs = [
+            item for item in res 
+            if item['symbol'].endswith('USDT') 
+            and not any(x in item['symbol'] for x in ['UPUSDT', 'DOWNUSDT', 'BEARUSDT', 'BULLUSDT'])
+        ]
+        
+        # 24h Quote Volume එක අනුව Sort කිරීම
+        usdt_pairs.sort(key=lambda x: float(x['quoteVolume']), reverse=True)
+        
+        # Top 50 highest volume symbols
+        top_symbols = [item['symbol'] for item in usdt_pairs[:limit]]
+        return top_symbols
+    except Exception as e:
+        print(f"Error fetching top pairs: {e}")
+        # Default Coins Fallback List
+        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'LINKUSDT', 'SUIUSDT']
+
+# Binance එකේ Trade Volume එක වැඩිම Top 50 Coins Auto Fetch වෙයි
+SYMBOLS = get_top_volume_usdt_pairs(limit=50)
 
 def get_binance_data(symbol, interval='15m', limit=100):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    data = requests.get(url).json()
+    data = requests.get(url, timeout=10).json()
     df = pd.DataFrame(data, columns=['time', 'open', 'high', 'low', 'close', 'volume', '_', '_', '_', '_', '_', '_'])
     df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
     return df
 
 def analyze_institutional_setup():
+    print(f"Scanning Top {len(SYMBOLS)} Most Traded Coins...")
+    
     for symbol in SYMBOLS:
         try:
             # 1. Multi-Timeframe Analysis (MTF) - 1H Trend Direction
@@ -51,27 +80,23 @@ def analyze_institutional_setup():
             # B. Volume & Order Flow: Volume Spike
             volume_spike = last['volume'] > (last['vol_ma'] * 1.3)
 
-            # C. RSI Divergence Check
-            rsi_bullish_div = (last['close'] < prev['close']) and (last['rsi'] > prev['rsi'])
-            rsi_bearish_div = (last['close'] > prev['close']) and (last['rsi'] < prev['rsi'])
-
-            # D. Supply / Demand Zone + Fib Retracement Confirmation
+            # C. Supply / Demand Zone + Fib Retracement Confirmation
             fib_0618_buy = last['close'] <= (recent_high - (recent_high - recent_low) * 0.382)
             fib_0618_sell = last['close'] >= (recent_low + (recent_high - recent_low) * 0.382)
 
             # --- 🟢 HIGH ACCURACY BULLISH ENTRY (BUY) ---
             if (trend_1h == "BULLISH") and sweep_buy and choch_buy and volume_spike and fib_0618_buy:
-                entry = round(last['close'], 2)
-                sl = round(recent_low * 0.998, 2)
+                entry = round(last['close'], 4 if last['close'] < 1 else 2)
+                sl = round(recent_low * 0.998, 4 if last['close'] < 1 else 2)
                 risk = entry - sl
                 
                 # Fibonacci Extensions for Targets
-                tp1 = round(entry + (risk * 2.0), 2)  # 1:2 R:R
-                tp2 = round(entry + (risk * 3.5), 2)  # 1:3.5 R:R
+                tp1 = round(entry + (risk * 2.0), 4 if last['close'] < 1 else 2)  # 1:2 R:R
+                tp2 = round(entry + (risk * 3.5), 4 if last['close'] < 1 else 2)  # 1:3.5 R:R
 
                 payload = {
                     "Pair": symbol,
-                    "Type": "BUY 🟢 (INSTITUTIONAL)",
+                    "Type": "BUY 🟢 (SMC/ICT)",
                     "Entry": entry,
                     "TP1": tp1,
                     "TP2": tp2,
@@ -85,16 +110,16 @@ def analyze_institutional_setup():
 
             # --- 🔴 HIGH ACCURACY BEARISH ENTRY (SELL) ---
             elif (trend_1h == "BEARISH") and sweep_sell and choch_sell and volume_spike and fib_0618_sell:
-                entry = round(last['close'], 2)
-                sl = round(recent_high * 1.002, 2)
+                entry = round(last['close'], 4 if last['close'] < 1 else 2)
+                sl = round(recent_high * 1.002, 4 if last['close'] < 1 else 2)
                 risk = sl - entry
                 
-                tp1 = round(entry - (risk * 2.0), 2)
-                tp2 = round(entry - (risk * 3.5), 2)
+                tp1 = round(entry - (risk * 2.0), 4 if last['close'] < 1 else 2)
+                tp2 = round(entry - (risk * 3.5), 4 if last['close'] < 1 else 2)
 
                 payload = {
                     "Pair": symbol,
-                    "Type": "SELL 🔴 (INSTITUTIONAL)",
+                    "Type": "SELL 🔴 (SMC/ICT)",
                     "Entry": entry,
                     "TP1": tp1,
                     "TP2": tp2,
