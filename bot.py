@@ -9,13 +9,11 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
 # --- KUCOIN API DATA FETCHING ---
 def fetch_top_symbols(limit=100):
-    """KuCoin එකෙන් USDT Pairs ලබාගැනීම"""
     url = "https://api.kucoin.com/api/v1/market/allTickers"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10).json()
         if res.get('code') == '200000':
             ticker_list = res['data']['ticker']
-            # USDT pairs වෙන් කරගෙන Volume (volValue) එක අනුව Sort කිරීම
             usdt_pairs = [item for item in ticker_list if item['symbol'].endswith('-USDT')]
             usdt_pairs.sort(key=lambda x: float(x.get('volValue', 0)), reverse=True)
             return [item['symbol'] for item in usdt_pairs[:limit]]
@@ -24,13 +22,11 @@ def fetch_top_symbols(limit=100):
     return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "XRP-USDT", "BNB-USDT"]
 
 def fetch_kucoin_klines(symbol, type_interval='15min'):
-    """KuCoin එකෙන් Candle Data ලබාගැනීම"""
     url = f"https://api.kucoin.com/api/v1/market/candles?symbol={symbol}&type={type_interval}"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10).json()
         if res.get('code') == '200000':
             raw_data = res['data']
-            # KuCoin එවන පිළිවෙළ: [time, open, close, high, low, volume, turnover]
             raw_data.reverse()
             df = pd.DataFrame(raw_data, columns=['time', 'open', 'close', 'high', 'low', 'volume', 'turnover'])
             df['close'] = df['close'].astype(float)
@@ -70,11 +66,8 @@ def run_bot():
             
         if signal_type:
             signals_found += 1
-            # Pair Name එක එකඟතාවය සඳහා Dash එක අයින් කර සැකසීම (උදා: BTCUSDT)
             formatted_symbol = symbol.replace("-", "")
             entry = round(current_price, 4 if current_price < 1 else 2)
-            
-            print(f"SUCCESS: {signal_type} Signal for {formatted_symbol} | Price: {entry} | RSI: {round(last_rsi, 2)}")
             
             payload = {
                 "Pair": formatted_symbol,
@@ -85,7 +78,8 @@ def run_bot():
                 "Key": "VIP2026"
             }
             try:
-                requests.post(SHEETBEST_URL, json=payload, timeout=10)
+                res = requests.post(SHEETBEST_URL, json=payload, timeout=10)
+                print(f"Sheetbest Status for {formatted_symbol}: {res.status_code} | Response: {res.text}")
             except Exception as e:
                 print(f"Failed to send to Sheetbest: {e}")
 
