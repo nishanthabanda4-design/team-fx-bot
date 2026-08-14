@@ -55,6 +55,7 @@ def get_binance_data(symbol, interval='15m', limit=150):
     data = res.json()
     
     if not isinstance(data, list) or len(data) < 50:
+        print(f"Data fetch failed for {symbol}: {data}") # Error එක බලාගැනීමට එකතු කළ කොටස
         return None
         
     df = pd.DataFrame(data, columns=['time', 'open', 'high', 'low', 'close', 'volume', '_', '_', '_', '_', '_', '_'])
@@ -93,10 +94,10 @@ def analyze_institutional_setup():
             sweep_sell = (df['high'].iloc[-3:-1].max() > recent_high) and (prev['close'] < recent_high)
             choch_sell = last['close'] < prev['low']
 
-            # --- සිග්නල් වැඩිපුර ලබා ගැනීමට කොන්දේසි ලිහිල් කිරීම ---
-            volume_spike = last['volume'] > (last['vol_ma'] * 1.0) # Volume ලිහිල් කරන ලදී
-            fib_0618_buy = True  # Fibonacci Filter ඉවත් කරන ලදී
-            fib_0618_sell = True # Fibonacci Filter ඉවත් කරන ලදී
+            # --- ලිහිල් කළ කොන්දේසි ---
+            volume_spike = last['volume'] > (last['vol_ma'] * 1.0)
+            fib_0618_buy = True  
+            fib_0618_sell = True 
 
             # BUY Signal
             if (trend_1h == "BULLISH") and sweep_buy and choch_buy and volume_spike and fib_0618_buy:
