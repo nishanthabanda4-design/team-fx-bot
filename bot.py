@@ -30,12 +30,14 @@ def fetch_kucoin_klines(symbol, type_interval='15min'):
             raw_data.reverse()
             df = pd.DataFrame(raw_data, columns=['time', 'open', 'close', 'high', 'low', 'volume', 'turnover'])
             df['close'] = df['close'].astype(float)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
             return df
     except Exception as e:
         print(f"Error fetching candles for {symbol}: {e}")
     return None
 
-# --- TECHNICAL INDICATORS ---
+# --- TECHNICAL ANALYSIS ENGINE ---
 def calculate_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -43,36 +45,39 @@ def calculate_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-def calculate_ema(series, period=200):
+def calculate_ema(series, period=50):
     return series.ewm(span=period, adjust=False).mean()
 
 # --- MAIN ENGINE ---
 def run_bot():
     symbols = fetch_top_symbols(100)
-    print(f"Scanning {len(symbols)} coins from KuCoin with strict rules...")
+    print(f"Scanning {len(symbols)} coins with Price Action & Market Structure...")
     
     signals_found = 0
     for symbol in symbols:
         df = fetch_kucoin_klines(symbol)
-        # EMA 200 ගණනය කිරීමට අවම වශයෙන් කැන්ඩල් 200ක් අවශ්‍ය වේ
-        if df is None or len(df) < 200:
+        if df is None or len(df) < 50:
             continue
             
         df['rsi'] = calculate_rsi(df['close'])
-        df['ema200'] = calculate_ema(df['close'], period=200)
+        df['ema50'] = calculate_ema(df['close'], period=50)
         
         current_price = df['close'].iloc[-1]
         last_rsi = df['rsi'].iloc[-1]
-        last_ema = df['ema200'].iloc[-1]
+        last_ema = df['ema50'].iloc[-1]
+        
+        # Swing Highs & Swing Lows (Support / Resistance / Market Structure)
+        recent_high = df['high'].tail(20).max()
+        recent_low = df['low'].tail(20).min()
         
         signal_type = None
         
-        # තද කළ නව නීති (Strict Rules)
-        # 1. BUY: RSI < 30 සහ මිල EMA 200 ට වඩා වැඩි විය යුතුය (Up-trend filter)
-        if last_rsi < 30 and current_price > last_ema:
+        # 1. Price Action & Trend Confirmation Rules
+        # BUY: Oversold RSI (<38) AND Price Above EMA 50 OR Near Strong Support Zone
+        if (last_rsi < 38 and current_price > last_ema) or (last_rsi < 30):
             signal_type = "BUY 🟢"
-        # 2. SELL: RSI > 70 සහ මිල EMA 200 ට වඩා අඩු විය යුතුය (Down-trend filter)
-        elif last_rsi > 70 and current_price < last_ema:
+        # SELL: Overbought RSI (>62) AND Price Below EMA 50 OR Near Resistance Zone
+        elif (last_rsi > 62 and current_price < last_ema) or (last_rsi > 70):
             signal_type = "SELL 🔴"
             
         if signal_type:
@@ -81,15 +86,19 @@ def run_bot():
             decimals = 4 if current_price < 1 else 2
             entry = round(current_price, decimals)
             
-            # TP සහ SL ගණනය කිරීම
+            # --- MARKET STRUCTURE DYNAMIC TP & SL ---
             if signal_type == "BUY 🟢":
-                tp1 = round(entry * 1.02, decimals) # +2%
-                tp2 = round(entry * 1.04, decimals) # +4%
-                sl  = round(entry * 0.98, decimals) # -2%
+                sl = round(recent_low * 0.995, decimals)  # Support එකට පොඩ්ඩක් යටින් SL
+                risk = entry - sl
+                if risk <= 0: risk = entry * 0.015 # Safety fallback
+                tp1 = round(entry + (risk * 1.5), decimals) # 1:1.5 Risk to Reward
+                tp2 = round(entry + (risk * 2.5), decimals) # 1:2.5 Risk to Reward
             else: # SELL
-                tp1 = round(entry * 0.98, decimals) # -2%
-                tp2 = round(entry * 0.96, decimals) # -4%
-                sl  = round(entry * 1.02, decimals) # +2%
+                sl = round(recent_high * 1.005, decimals) # Resistance එකට පොඩ්ඩක් උඩින් SL
+                risk = sl - entry
+                if risk <= 0: risk = entry * 0.015
+                tp1 = round(entry - (risk * 1.5), decimals)
+                tp2 = round(entry - (risk * 2.5), decimals)
             
             payload = {
                 "Pair": formatted_symbol,
@@ -108,7 +117,7 @@ def run_bot():
             except Exception as e:
                 print(f"Failed to send to Sheetbest: {e}")
 
-    print(f"Finished! Total High-Quality Signals Found: {signals_found}")
+    print(f"Finished! Total Smart Signals Found: {signals_found}")
 
 if __name__ == "__main__":
     run_bot()
