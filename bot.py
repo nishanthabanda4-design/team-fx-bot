@@ -119,9 +119,9 @@ def run_bot():
     # 1. First update existing signals
     update_active_signals()
 
-    # 2. Scan for ultra high precision signals
+    # 2. Scan for high precision high-ROI signals
     symbols = fetch_top_symbols(100)
-    print(f"Scanning {len(symbols)} coins with 90% Win-Rate Rules...")
+    print(f"Scanning {len(symbols)} coins for High ROI (1:2 & 1:3.5 RRR) Signals...")
     
     signals_found = 0
     for symbol in symbols:
@@ -144,15 +144,14 @@ def run_bot():
         
         signal_type = None
         
-        # --- 90% HIGH CONFIRMATION FILTER ---
-        # Volume Spike Check (At least 1.2x average volume)
-        vol_confirmed = current_vol > (avg_vol * 1.2)
+        # --- HIGH ROI & PRECISION RULES ---
+        vol_confirmed = current_vol > (avg_vol * 1.05)  # Slightly relaxed volume check
         
-        # BUY: Strong Uptrend (Price > EMA50) AND Oversold RSI (<32) AND High Volume
-        if current_price > last_ema and last_rsi < 32 and vol_confirmed:
+        # BUY: Trend UP (Price > EMA50) AND Oversold RSI (<35) AND Volume Boost
+        if current_price > last_ema and last_rsi < 35 and vol_confirmed:
             signal_type = "BUY 🟢"
-        # SELL: Strong Downtrend (Price < EMA50) AND Overbought RSI (>68) AND High Volume
-        elif current_price < last_ema and last_rsi > 68 and vol_confirmed:
+        # SELL: Trend DOWN (Price < EMA50) AND Overbought RSI (>65) AND Volume Boost
+        elif current_price < last_ema and last_rsi > 65 and vol_confirmed:
             signal_type = "SELL 🔴"
             
         if signal_type:
@@ -161,18 +160,19 @@ def run_bot():
             decimals = 4 if current_price < 1 else 2
             entry = round(current_price, decimals)
             
+            # --- HIGH ROI DYNAMIC TP & SL (1:2 and 1:3.5 RRR) ---
             if signal_type == "BUY 🟢":
                 sl = round(recent_low * 0.995, decimals)
                 risk = entry - sl
-                if risk <= 0: risk = entry * 0.015
-                tp1 = round(entry + (risk * 1.5), decimals)
-                tp2 = round(entry + (risk * 2.5), decimals)
+                if risk <= 0: risk = entry * 0.02  # Default 2% Risk
+                tp1 = round(entry + (risk * 2.0), decimals)   # 1:2 Risk-Reward (TP1)
+                tp2 = round(entry + (risk * 3.5), decimals)   # 1:3.5 Risk-Reward (TP2)
             else:
                 sl = round(recent_high * 1.005, decimals)
                 risk = sl - entry
-                if risk <= 0: risk = entry * 0.015
-                tp1 = round(entry - (risk * 1.5), decimals)
-                tp2 = round(entry - (risk * 2.5), decimals)
+                if risk <= 0: risk = entry * 0.02
+                tp1 = round(entry - (risk * 2.0), decimals)   # 1:2 Risk-Reward (TP1)
+                tp2 = round(entry - (risk * 3.5), decimals)   # 1:3.5 Risk-Reward (TP2)
             
             payload = {
                 "Pair": formatted_symbol,
@@ -187,11 +187,11 @@ def run_bot():
             }
             try:
                 res = requests.post(SHEETBEST_URL, json=payload, timeout=10)
-                print(f"New Signal Sent for {formatted_symbol}: {res.status_code}")
+                print(f"New High-ROI Signal Sent for {formatted_symbol}: {res.status_code}")
             except Exception as e:
                 print(f"Failed to send to Sheetbest: {e}")
 
-    print(f"Finished! Total 90% Win-Rate Signals Found: {signals_found}")
+    print(f"Finished! Total High-ROI Signals Found: {signals_found}")
 
 if __name__ == "__main__":
     run_bot()
