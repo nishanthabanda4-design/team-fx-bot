@@ -4,34 +4,36 @@ import pandas as pd
 # Sheetbest URL
 SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
 
-# Request Headers (Bybit Block වීම වැළැක්වීමට)
+# Request Headers
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
-# --- BYBIT API DATA FETCHING ---
-def fetch_top_symbols(limit=150):
-    """Bybit එකෙන් 24h Turnover (Volume) එක වැඩිම USDT Pairs ලබාගැනීම"""
-    url = "https://api.bybit.com/v5/market/tickers?category=spot"
+# --- KUCOIN API DATA FETCHING ---
+def fetch_top_symbols(limit=100):
+    """KuCoin එකෙන් USDT Pairs ලබාගැනීම"""
+    url = "https://api.kucoin.com/api/v1/market/allTickers"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10).json()
-        if res.get('retCode') == 0:
-            list_data = res['result']['list']
-            usdt_pairs = [item for item in list_data if item['symbol'].endswith('USDT')]
-            usdt_pairs.sort(key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
+        if res.get('code') == '200000':
+            ticker_list = res['data']['ticker']
+            # USDT pairs වෙන් කරගෙන Volume (volValue) එක අනුව Sort කිරීම
+            usdt_pairs = [item for item in ticker_list if item['symbol'].endswith('-USDT')]
+            usdt_pairs.sort(key=lambda x: float(x.get('volValue', 0)), reverse=True)
             return [item['symbol'] for item in usdt_pairs[:limit]]
     except Exception as e:
-        print(f"Error fetching symbols: {e}")
-    return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]
+        print(f"Error fetching symbols from KuCoin: {e}")
+    return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "XRP-USDT", "BNB-USDT"]
 
-def fetch_bybit_klines(symbol, interval='15', limit=100):
-    """Bybit එකෙන් Candle Data ලබාගැනීම"""
-    url = f"https://api.bybit.com/v5/market/kline?category=spot&symbol={symbol}&interval={interval}&limit={limit}"
+def fetch_kucoin_klines(symbol, type_interval='15min'):
+    """KuCoin එකෙන් Candle Data ලබාගැනීම"""
+    url = f"https://api.kucoin.com/api/v1/market/candles?symbol={symbol}&type={type_interval}"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10).json()
-        if res.get('retCode') == 0:
-            list_data = res['result']['list']
-            list_data.reverse()
-            df = pd.DataFrame(list_data, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
-            df[['close', 'high', 'low', 'volume']] = df[['close', 'high', 'low', 'volume']].astype(float)
+        if res.get('code') == '200000':
+            raw_data = res['data']
+            # KuCoin එවන පිළිවෙළ: [time, open, close, high, low, volume, turnover]
+            raw_data.reverse()
+            df = pd.DataFrame(raw_data, columns=['time', 'open', 'close', 'high', 'low', 'volume', 'turnover'])
+            df['close'] = df['close'].astype(float)
             return df
     except Exception as e:
         print(f"Error fetching candles for {symbol}: {e}")
@@ -47,12 +49,12 @@ def calculate_rsi(series, period=14):
 
 # --- MAIN ENGINE ---
 def run_bot():
-    symbols = fetch_top_symbols(150)
-    print(f"Scanning {len(symbols)} coins from Bybit...")
+    symbols = fetch_top_symbols(100)
+    print(f"Scanning {len(symbols)} coins from KuCoin...")
     
     signals_found = 0
     for symbol in symbols:
-        df = fetch_bybit_klines(symbol)
+        df = fetch_kucoin_klines(symbol)
         if df is None or len(df) < 50:
             continue
             
@@ -68,12 +70,14 @@ def run_bot():
             
         if signal_type:
             signals_found += 1
+            # Pair Name එක එකඟතාවය සඳහා Dash එක අයින් කර සැකසීම (උදා: BTCUSDT)
+            formatted_symbol = symbol.replace("-", "")
             entry = round(current_price, 4 if current_price < 1 else 2)
             
-            print(f"SUCCESS: {signal_type} Signal for {symbol} | Price: {entry} | RSI: {round(last_rsi, 2)}")
+            print(f"SUCCESS: {signal_type} Signal for {formatted_symbol} | Price: {entry} | RSI: {round(last_rsi, 2)}")
             
             payload = {
-                "Pair": symbol,
+                "Pair": formatted_symbol,
                 "Type": signal_type,
                 "Entry": entry,
                 "RSI": round(float(last_rsi), 2),
