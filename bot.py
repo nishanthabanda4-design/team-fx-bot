@@ -8,20 +8,20 @@ SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339f
 # 150 Coins Fallback List
 FALLBACK_150_COINS = [
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'SUIUSDT', 'LINKUSDT',
-    'PEPEUSDT', 'NEARUSDT', 'SHIBUSDT', 'SUIUSDT', 'LTCUSDT', 'DOTUSDT', 'APTUSDT', 'BCHUSDT', 'UNIUSDT', 'ICPUSDT',
+    'PEPEUSDT', 'NEARUSDT', 'SHIBUSDT', 'LTCUSDT', 'DOTUSDT', 'APTUSDT', 'BCHUSDT', 'UNIUSDT', 'ICPUSDT',
     'FETUSDT', 'RENDERUSDT', 'TAOUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'TIAUSDT', 'WIFUSDT', 'SEIUSDT', 'INJUSDT',
     'STXUSDT', 'FILUSDT', 'TRXUSDT', 'GALAUSDT', 'ETCUSDT', 'RUNEUSDT', 'ORDIUSDT', 'BONKUSDT', 'ATOMUSDT', 'CRVUSDT',
     'FTMUSDT', 'IMXUSDT', 'GRTUSDT', 'LDOUSDT', 'EGLDUSDT', 'THETAUSDT', 'JUPUSDT', 'AAVEUSDT', 'KASUSDT', 'PYTHUSDT',
-    'PENDLEUSDT', 'ENSUSDT', 'NOTUSDT', 'ONDOUSDT', 'WLDUSDT', 'STRKUSDT', 'POCATUSDT', 'STRKUSDT', 'AXSUSDT', 'SANDUSDT',
+    'PENDLEUSDT', 'ENSUSDT', 'NOTUSDT', 'ONDOUSDT', 'WLDUSDT', 'STRKUSDT', 'AXSUSDT', 'SANDUSDT',
     'MANAUSDT', 'EOSUSDT', 'FLOWUSDT', 'SNXUSDT', 'NEOUSDT', 'XMRUSDT', 'MKRUSDT', 'COMPUSDT', 'DYDXUSDT', 'CHZUSDT',
     'MINAUSDT', 'GMXUSDT', 'KAVAUSDT', 'ZECUSDT', 'IOTAUSDT', 'DASHUSDT', '1INCHUSDT', 'HOTUSDT', 'AUDIOUSDT', 'BATUSDT',
     'QTUMUSDT', 'OMGUSDT', 'ZILUSDT', 'ANKRUSDT', 'RVNUSDT', 'ENJUSDT', 'ALGOUSDT', 'ONEUSDT', 'WAVESUSDT', 'ONTUSDT',
     'ICXUSDT', 'SKLUSDT', 'CELOUSDT', 'BANDUSDT', 'STORJUSDT', 'KSMUSDT', 'BLZUSDT', 'GLMRUSDT', 'WOOUSDT', 'MAGICUSDT',
-    'ASTRUSDT', 'API3USDT', 'SSVUSDT', 'CFXUSDT', 'ACHUSDT', 'IDUSDT', 'ARBUSDT', 'RDNTUSDT', 'EDUUSDT', 'SUIUSDT',
-    'MAVUSDT', 'PENDLEUSDT', 'ARKMUSDT', 'WLDUSDT', 'SEIUSDT', 'CYBERUSDT', 'BIGTIMEUSDT', 'MEMEUSDT', 'TOKENUSDT', 'BEAMXUSDT',
-    'JTOUSDT', 'ACEUSDT', 'NFPUSDT', 'AIUSDT', 'XAIUSDT', 'MANTAUSDT', 'ALTUSDT', 'PYTHUSDT', 'DYMUSDT', 'RONUSDT',
-    'PIXELUSDT', 'STRKUSDT', 'PORTALUSDT', 'AXLUSDT', 'AEVOUSDT', 'NEARUSDT', 'BOMEUSDT', 'ETHFIUSDT', 'ENAUSDT', 'WUSDT',
-    'TNSRUSDT', 'SAGAUSDT', 'OMNIUSDT', 'REZUSDT', 'BBUSDT', 'NOTUSDT', 'IOUSDT', 'ZKUSDT', 'ZROUSDT', 'LISTAUSDT'
+    'ASTRUSDT', 'API3USDT', 'SSVUSDT', 'CFXUSDT', 'ACHUSDT', 'IDUSDT', 'RDNTUSDT', 'EDUUSDT',
+    'MAVUSDT', 'ARKMUSDT', 'CYBERUSDT', 'BIGTIMEUSDT', 'MEMEUSDT', 'TOKENUSDT', 'BEAMXUSDT',
+    'JTOUSDT', 'ACEUSDT', 'NFPUSDT', 'AIUSDT', 'XAIUSDT', 'MANTAUSDT', 'ALTUSDT', 'DYMUSDT', 'RONUSDT',
+    'PIXELUSDT', 'PORTALUSDT', 'AXLUSDT', 'AEVOUSDT', 'BOMEUSDT', 'ETHFIUSDT', 'ENAUSDT', 'WUSDT',
+    'TNSRUSDT', 'SAGAUSDT', 'OMNIUSDT', 'REZUSDT', 'BBUSDT', 'IOUSDT', 'ZKUSDT', 'ZROUSDT', 'LISTAUSDT'
 ]
 
 def get_top_volume_usdt_pairs(limit=150):
@@ -93,10 +93,10 @@ def analyze_institutional_setup():
             sweep_sell = (df['high'].iloc[-3:-1].max() > recent_high) and (prev['close'] < recent_high)
             choch_sell = last['close'] < prev['low']
 
-            volume_spike = last['volume'] > (last['vol_ma'] * 1.2)
-
-            fib_0618_buy = last['close'] <= (recent_high - (recent_high - recent_low) * 0.382)
-            fib_0618_sell = last['close'] >= (recent_low + (recent_high - recent_low) * 0.382)
+            # --- සිග්නල් වැඩිපුර ලබා ගැනීමට කොන්දේසි ලිහිල් කිරීම ---
+            volume_spike = last['volume'] > (last['vol_ma'] * 1.0) # Volume ලිහිල් කරන ලදී
+            fib_0618_buy = True  # Fibonacci Filter ඉවත් කරන ලදී
+            fib_0618_sell = True # Fibonacci Filter ඉවත් කරන ලදී
 
             # BUY Signal
             if (trend_1h == "BULLISH") and sweep_buy and choch_buy and volume_spike and fib_0618_buy:
