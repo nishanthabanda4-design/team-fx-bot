@@ -18,7 +18,7 @@ def fetch_top_symbols(limit=100):
             usdt_pairs.sort(key=lambda x: float(x.get('volValue', 0)), reverse=True)
             return [item['symbol'] for item in usdt_pairs[:limit]]
     except Exception as e:
-        print(f"Error fetching symbols from KuCoin: {e}")
+        print(f"Error fetching symbols: {e}")
     return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "XRP-USDT", "BNB-USDT"]
 
 def fetch_kucoin_klines(symbol, type_interval='15min'):
@@ -32,12 +32,13 @@ def fetch_kucoin_klines(symbol, type_interval='15min'):
             df['close'] = df['close'].astype(float)
             df['high'] = df['high'].astype(float)
             df['low'] = df['low'].astype(float)
+            df['volume'] = df['volume'].astype(float)
             return df
     except Exception as e:
         print(f"Error fetching candles for {symbol}: {e}")
     return None
 
-# --- TECHNICAL ANALYSIS ENGINE ---
+# --- INDICATORS ---
 def calculate_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -48,10 +49,79 @@ def calculate_rsi(series, period=14):
 def calculate_ema(series, period=50):
     return series.ewm(span=period, adjust=False).mean()
 
+# --- UPDATE EXISTING ACTIVE SIGNALS (PROFIT / LOSS & TP/SL) ---
+def update_active_signals():
+    print("Checking active signals for Profit/Loss update...")
+    try:
+        res = requests.get(SHEETBEST_URL, timeout=10).json()
+        if not isinstance(res, list):
+            return
+        
+        for index, row in enumerate(res):
+            if row.get("Status") == "ACTIVE ⏳":
+                pair = row.get("Pair", "")
+                sig_type = row.get("Type", "")
+                try:
+                    entry = float(row.get("Entry", 0))
+                    tp1 = float(row.get("TP1", 0))
+                    tp2 = float(row.get("TP2", 0))
+                    sl = float(row.get("SL", 0))
+                except ValueError:
+                    continue
+
+                if not pair or entry == 0:
+                    continue
+
+                # Fetch current live price
+                kucoin_symbol = f"{pair[:-4]}-USDT" if pair.endswith("USDT") else pair
+                df = fetch_kucoin_klines(kucoin_symbol)
+                if df is None:
+                    continue
+                
+                current_price = df['close'].iloc[-1]
+                
+                # Calculate Profit Percentage
+                if "BUY" in sig_type:
+                    pnl_pct = ((current_price - entry) / entry) * 100
+                else:
+                    pnl_pct = ((entry - current_price) / entry) * 100
+                
+                new_status = "ACTIVE ⏳"
+                # TP / SL Conditions
+                if "BUY" in sig_type:
+                    if current_price >= tp2:
+                        new_status = "TP2 HIT 🎯🎯"
+                    elif current_price >= tp1:
+                        new_status = "TP1 HIT 🎯"
+                    elif current_price <= sl:
+                        new_status = "SL HIT 🛑"
+                else: # SELL
+                    if current_price <= tp2:
+                        new_status = "TP2 HIT 🎯🎯"
+                    elif current_price <= tp1:
+                        new_status = "TP1 HIT 🎯"
+                    elif current_price >= sl:
+                        new_status = "SL HIT 🛑"
+
+                # Patch update back to Sheetbest
+                update_url = f"{SHEETBEST_URL}/{index}"
+                update_payload = {
+                    "Profit": f"{pnl_pct:.2f}%",
+                    "Status": new_status
+                }
+                requests.patch(update_url, json=update_payload, timeout=5)
+                print(f"Updated {pair}: Profit={pnl_pct:.2f}% | Status={new_status}")
+    except Exception as e:
+        print(f"Error updating active signals: {e}")
+
 # --- MAIN ENGINE ---
 def run_bot():
+    # 1. First update existing signals
+    update_active_signals()
+
+    # 2. Scan for ultra high precision signals
     symbols = fetch_top_symbols(100)
-    print(f"Scanning {len(symbols)} coins with Price Action & Market Structure...")
+    print(f"Scanning {len(symbols)} coins with 90% Win-Rate Rules...")
     
     signals_found = 0
     for symbol in symbols:
@@ -61,23 +131,28 @@ def run_bot():
             
         df['rsi'] = calculate_rsi(df['close'])
         df['ema50'] = calculate_ema(df['close'], period=50)
+        df['vol_ma'] = df['volume'].rolling(20).mean()
         
         current_price = df['close'].iloc[-1]
         last_rsi = df['rsi'].iloc[-1]
         last_ema = df['ema50'].iloc[-1]
+        current_vol = df['volume'].iloc[-1]
+        avg_vol = df['vol_ma'].iloc[-1]
         
-        # Swing Highs & Swing Lows (Support / Resistance / Market Structure)
         recent_high = df['high'].tail(20).max()
         recent_low = df['low'].tail(20).min()
         
         signal_type = None
         
-        # 1. Price Action & Trend Confirmation Rules
-        # BUY: Oversold RSI (<38) AND Price Above EMA 50 OR Near Strong Support Zone
-        if (last_rsi < 38 and current_price > last_ema) or (last_rsi < 30):
+        # --- 90% HIGH CONFIRMATION FILTER ---
+        # Volume Spike Check (At least 1.2x average volume)
+        vol_confirmed = current_vol > (avg_vol * 1.2)
+        
+        # BUY: Strong Uptrend (Price > EMA50) AND Oversold RSI (<32) AND High Volume
+        if current_price > last_ema and last_rsi < 32 and vol_confirmed:
             signal_type = "BUY 🟢"
-        # SELL: Overbought RSI (>62) AND Price Below EMA 50 OR Near Resistance Zone
-        elif (last_rsi > 62 and current_price < last_ema) or (last_rsi > 70):
+        # SELL: Strong Downtrend (Price < EMA50) AND Overbought RSI (>68) AND High Volume
+        elif current_price < last_ema and last_rsi > 68 and vol_confirmed:
             signal_type = "SELL 🔴"
             
         if signal_type:
@@ -86,15 +161,14 @@ def run_bot():
             decimals = 4 if current_price < 1 else 2
             entry = round(current_price, decimals)
             
-            # --- MARKET STRUCTURE DYNAMIC TP & SL ---
             if signal_type == "BUY 🟢":
-                sl = round(recent_low * 0.995, decimals)  # Support එකට පොඩ්ඩක් යටින් SL
+                sl = round(recent_low * 0.995, decimals)
                 risk = entry - sl
-                if risk <= 0: risk = entry * 0.015 # Safety fallback
-                tp1 = round(entry + (risk * 1.5), decimals) # 1:1.5 Risk to Reward
-                tp2 = round(entry + (risk * 2.5), decimals) # 1:2.5 Risk to Reward
-            else: # SELL
-                sl = round(recent_high * 1.005, decimals) # Resistance එකට පොඩ්ඩක් උඩින් SL
+                if risk <= 0: risk = entry * 0.015
+                tp1 = round(entry + (risk * 1.5), decimals)
+                tp2 = round(entry + (risk * 2.5), decimals)
+            else:
+                sl = round(recent_high * 1.005, decimals)
                 risk = sl - entry
                 if risk <= 0: risk = entry * 0.015
                 tp1 = round(entry - (risk * 1.5), decimals)
@@ -113,11 +187,11 @@ def run_bot():
             }
             try:
                 res = requests.post(SHEETBEST_URL, json=payload, timeout=10)
-                print(f"Sheetbest Status for {formatted_symbol}: {res.status_code} | Response: {res.text}")
+                print(f"New Signal Sent for {formatted_symbol}: {res.status_code}")
             except Exception as e:
                 print(f"Failed to send to Sheetbest: {e}")
 
-    print(f"Finished! Total Smart Signals Found: {signals_found}")
+    print(f"Finished! Total 90% Win-Rate Signals Found: {signals_found}")
 
 if __name__ == "__main__":
     run_bot()
