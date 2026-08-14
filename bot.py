@@ -4,12 +4,15 @@ import pandas as pd
 # Sheetbest URL
 SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
 
+# Request Headers (Bybit Block වීම වැළැක්වීමට)
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
 # --- BYBIT API DATA FETCHING ---
 def fetch_top_symbols(limit=150):
     """Bybit එකෙන් 24h Turnover (Volume) එක වැඩිම USDT Pairs ලබාගැනීම"""
     url = "https://api.bybit.com/v5/market/tickers?category=spot"
     try:
-        res = requests.get(url, timeout=10).json()
+        res = requests.get(url, headers=HEADERS, timeout=10).json()
         if res.get('retCode') == 0:
             list_data = res['result']['list']
             usdt_pairs = [item for item in list_data if item['symbol'].endswith('USDT')]
@@ -17,14 +20,13 @@ def fetch_top_symbols(limit=150):
             return [item['symbol'] for item in usdt_pairs[:limit]]
     except Exception as e:
         print(f"Error fetching symbols: {e}")
-    # Backup list if API fails
     return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]
 
 def fetch_bybit_klines(symbol, interval='15', limit=100):
     """Bybit එකෙන් Candle Data ලබාගැනීම"""
     url = f"https://api.bybit.com/v5/market/kline?category=spot&symbol={symbol}&interval={interval}&limit={limit}"
     try:
-        res = requests.get(url, timeout=10).json()
+        res = requests.get(url, headers=HEADERS, timeout=10).json()
         if res.get('retCode') == 0:
             list_data = res['result']['list']
             list_data.reverse()
