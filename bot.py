@@ -5,10 +5,30 @@ import ta
 
 SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
 
+# 150 Coins Fallback List
+FALLBACK_150_COINS = [
+    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'SUIUSDT', 'LINKUSDT',
+    'PEPEUSDT', 'NEARUSDT', 'SHIBUSDT', 'SUIUSDT', 'LTCUSDT', 'DOTUSDT', 'APTUSDT', 'BCHUSDT', 'UNIUSDT', 'ICPUSDT',
+    'FETUSDT', 'RENDERUSDT', 'TAOUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'TIAUSDT', 'WIFUSDT', 'SEIUSDT', 'INJUSDT',
+    'STXUSDT', 'FILUSDT', 'TRXUSDT', 'GALAUSDT', 'ETCUSDT', 'RUNEUSDT', 'ORDIUSDT', 'BONKUSDT', 'ATOMUSDT', 'CRVUSDT',
+    'FTMUSDT', 'IMXUSDT', 'GRTUSDT', 'LDOUSDT', 'EGLDUSDT', 'THETAUSDT', 'JUPUSDT', 'AAVEUSDT', 'KASUSDT', 'PYTHUSDT',
+    'PENDLEUSDT', 'ENSUSDT', 'NOTUSDT', 'ONDOUSDT', 'WLDUSDT', 'STRKUSDT', 'POCATUSDT', 'STRKUSDT', 'AXSUSDT', 'SANDUSDT',
+    'MANAUSDT', 'EOSUSDT', 'FLOWUSDT', 'SNXUSDT', 'NEOUSDT', 'XMRUSDT', 'MKRUSDT', 'COMPUSDT', 'DYDXUSDT', 'CHZUSDT',
+    'MINAUSDT', 'GMXUSDT', 'KAVAUSDT', 'ZECUSDT', 'IOTAUSDT', 'DASHUSDT', '1INCHUSDT', 'HOTUSDT', 'AUDIOUSDT', 'BATUSDT',
+    'QTUMUSDT', 'OMGUSDT', 'ZILUSDT', 'ANKRUSDT', 'RVNUSDT', 'ENJUSDT', 'ALGOUSDT', 'ONEUSDT', 'WAVESUSDT', 'ONTUSDT',
+    'ICXUSDT', 'SKLUSDT', 'CELOUSDT', 'BANDUSDT', 'STORJUSDT', 'KSMUSDT', 'BLZUSDT', 'GLMRUSDT', 'WOOUSDT', 'MAGICUSDT',
+    'ASTRUSDT', 'API3USDT', 'SSVUSDT', 'CFXUSDT', 'ACHUSDT', 'IDUSDT', 'ARBUSDT', 'RDNTUSDT', 'EDUUSDT', 'SUIUSDT',
+    'MAVUSDT', 'PENDLEUSDT', 'ARKMUSDT', 'WLDUSDT', 'SEIUSDT', 'CYBERUSDT', 'BIGTIMEUSDT', 'MEMEUSDT', 'TOKENUSDT', 'BEAMXUSDT',
+    'JTOUSDT', 'ACEUSDT', 'NFPUSDT', 'AIUSDT', 'XAIUSDT', 'MANTAUSDT', 'ALTUSDT', 'PYTHUSDT', 'DYMUSDT', 'RONUSDT',
+    'PIXELUSDT', 'STRKUSDT', 'PORTALUSDT', 'AXLUSDT', 'AEVOUSDT', 'NEARUSDT', 'BOMEUSDT', 'ETHFIUSDT', 'ENAUSDT', 'WUSDT',
+    'TNSRUSDT', 'SAGAUSDT', 'OMNIUSDT', 'REZUSDT', 'BBUSDT', 'NOTUSDT', 'IOUSDT', 'ZKUSDT', 'ZROUSDT', 'LISTAUSDT'
+]
+
 def get_top_volume_usdt_pairs(limit=150):
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
-        res = requests.get(url, timeout=10).json()
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=10).json()
         
         if isinstance(res, list):
             usdt_pairs = [
@@ -17,18 +37,21 @@ def get_top_volume_usdt_pairs(limit=150):
                 and not any(x in item.get('symbol', '') for x in ['UPUSDT', 'DOWNUSDT', 'BEARUSDT', 'BULLUSDT'])
             ]
             usdt_pairs.sort(key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-            return [item['symbol'] for item in usdt_pairs[:limit]]
+            fetched_symbols = [item['symbol'] for item in usdt_pairs[:limit]]
+            if len(fetched_symbols) >= limit:
+                return fetched_symbols
     except Exception as e:
         print(f"Fetch error: {e}")
         
-    # Safe Fallback List
-    return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'LINKUSDT', 'SUIUSDT', 'NEARUSDT', 'PEPEUSDT']
+    print("Using Fallback 150 Coins List...")
+    return FALLBACK_150_COINS[:limit]
 
-SYMBOLS = get_top_volume_usdt_pairs(30)
+SYMBOLS = get_top_volume_usdt_pairs(150)
 
 def get_binance_data(symbol, interval='15m', limit=150):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    res = requests.get(url, timeout=10)
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    res = requests.get(url, headers=headers, timeout=10)
     data = res.json()
     
     if not isinstance(data, list) or len(data) < 50:
