@@ -5,7 +5,7 @@ import ta
 
 SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
 
-def get_top_volume_usdt_pairs(limit=30):
+def get_top_volume_usdt_pairs(limit=150):
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
         res = requests.get(url, timeout=10).json()
