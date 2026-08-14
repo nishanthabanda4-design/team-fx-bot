@@ -67,14 +67,29 @@ def run_bot():
         if signal_type:
             signals_found += 1
             formatted_symbol = symbol.replace("-", "")
-            entry = round(current_price, 4 if current_price < 1 else 2)
+            decimals = 4 if current_price < 1 else 2
+            entry = round(current_price, decimals)
             
+            # TP සහ SL ගණනය කිරීම
+            if signal_type == "BUY 🟢":
+                tp1 = round(entry * 1.02, decimals) # +2%
+                tp2 = round(entry * 1.04, decimals) # +4%
+                sl  = round(entry * 0.98, decimals) # -2%
+            else: # SELL
+                tp1 = round(entry * 0.98, decimals) # -2%
+                tp2 = round(entry * 0.96, decimals) # -4%
+                sl  = round(entry * 1.02, decimals) # +2%
+            
+            # Google Sheet එකේ Column Headers වලටම අනුකූල Payload එක
             payload = {
                 "Pair": formatted_symbol,
                 "Type": signal_type,
                 "Entry": entry,
-                "RSI": round(float(last_rsi), 2),
+                "TP1": tp1,
+                "TP2": tp2,
+                "SL": sl,
                 "Status": "ACTIVE ⏳",
+                "Profit": "0%",
                 "Key": "VIP2026"
             }
             try:
