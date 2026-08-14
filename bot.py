@@ -1,152 +1,97 @@
+import os
 import requests
+import json
 import pandas as pd
-import numpy as np
-import ta
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
+# --- GOOGLE SHEETS SETUP ---
+SPREADSHEET_ID = '14G42hY2e7oK7fT_S1wYqG_R8A6pT_x-fX5u3g2_Z-8'
+SHEET_NAME = 'Signals'
 
-# 150 Coins Fallback List
-FALLBACK_150_COINS = [
-    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'SUIUSDT', 'LINKUSDT',
-    'PEPEUSDT', 'NEARUSDT', 'SHIBUSDT', 'LTCUSDT', 'DOTUSDT', 'APTUSDT', 'BCHUSDT', 'UNIUSDT', 'ICPUSDT',
-    'FETUSDT', 'RENDERUSDT', 'TAOUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'TIAUSDT', 'WIFUSDT', 'SEIUSDT', 'INJUSDT',
-    'STXUSDT', 'FILUSDT', 'TRXUSDT', 'GALAUSDT', 'ETCUSDT', 'RUNEUSDT', 'ORDIUSDT', 'BONKUSDT', 'ATOMUSDT', 'CRVUSDT',
-    'FTMUSDT', 'IMXUSDT', 'GRTUSDT', 'LDOUSDT', 'EGLDUSDT', 'THETAUSDT', 'JUPUSDT', 'AAVEUSDT', 'KASUSDT', 'PYTHUSDT',
-    'PENDLEUSDT', 'ENSUSDT', 'NOTUSDT', 'ONDOUSDT', 'WLDUSDT', 'STRKUSDT', 'AXSUSDT', 'SANDUSDT',
-    'MANAUSDT', 'EOSUSDT', 'FLOWUSDT', 'SNXUSDT', 'NEOUSDT', 'XMRUSDT', 'MKRUSDT', 'COMPUSDT', 'DYDXUSDT', 'CHZUSDT',
-    'MINAUSDT', 'GMXUSDT', 'KAVAUSDT', 'ZECUSDT', 'IOTAUSDT', 'DASHUSDT', '1INCHUSDT', 'HOTUSDT', 'AUDIOUSDT', 'BATUSDT',
-    'QTUMUSDT', 'OMGUSDT', 'ZILUSDT', 'ANKRUSDT', 'RVNUSDT', 'ENJUSDT', 'ALGOUSDT', 'ONEUSDT', 'WAVESUSDT', 'ONTUSDT',
-    'ICXUSDT', 'SKLUSDT', 'CELOUSDT', 'BANDUSDT', 'STORJUSDT', 'KSMUSDT', 'BLZUSDT', 'GLMRUSDT', 'WOOUSDT', 'MAGICUSDT',
-    'ASTRUSDT', 'API3USDT', 'SSVUSDT', 'CFXUSDT', 'ACHUSDT', 'IDUSDT', 'RDNTUSDT', 'EDUUSDT',
-    'MAVUSDT', 'ARKMUSDT', 'CYBERUSDT', 'BIGTIMEUSDT', 'MEMEUSDT', 'TOKENUSDT', 'BEAMXUSDT',
-    'JTOUSDT', 'ACEUSDT', 'NFPUSDT', 'AIUSDT', 'XAIUSDT', 'MANTAUSDT', 'ALTUSDT', 'DYMUSDT', 'RONUSDT',
-    'PIXELUSDT', 'PORTALUSDT', 'AXLUSDT', 'AEVOUSDT', 'BOMEUSDT', 'ETHFIUSDT', 'ENAUSDT', 'WUSDT',
-    'TNSRUSDT', 'SAGAUSDT', 'OMNIUSDT', 'REZUSDT', 'BBUSDT', 'IOUSDT', 'ZKUSDT', 'ZROUSDT', 'LISTAUSDT'
-]
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+creds_json = os.environ.get('GCP_SA_KEY')
 
-def get_top_volume_usdt_pairs(limit=150):
+if creds_json:
+    creds_dict = json.loads(creds_json)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    gc = gspread.authorize(creds)
+    sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
+else:
+    print("WARNING: GCP_SA_KEY is missing!")
+    sheet = None
+
+# --- BYBIT API DATA FETCHING ---
+def fetch_top_symbols(limit=150):
+    """Bybit එකෙන් Volume එක වැඩිම USDT Pairs 150 ලබාගැනීම"""
+    url = "https://api.bybit.com/v5/market/tickers?category=spot"
     try:
-        url = "https://api.binance.com/api/v3/ticker/24hr"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=10).json()
-        
-        if isinstance(res, list):
-            usdt_pairs = [
-                item for item in res 
-                if isinstance(item, dict) and item.get('symbol', '').endswith('USDT') 
-                and not any(x in item.get('symbol', '') for x in ['UPUSDT', 'DOWNUSDT', 'BEARUSDT', 'BULLUSDT'])
-            ]
-            usdt_pairs.sort(key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-            fetched_symbols = [item['symbol'] for item in usdt_pairs[:limit]]
-            if len(fetched_symbols) >= limit:
-                return fetched_symbols
+        res = requests.get(url, timeout=10).json()
+        if res.get('retCode') == 0:
+            list_data = res['result']['list']
+            # Turnover (Volume) එක අනුව Sort කිරීම
+            usdt_pairs = [item for item in list_data if item['symbol'].endswith('USDT')]
+            usdt_pairs.sort(key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
+            return [item['symbol'] for item in usdt_pairs[:limit]]
     except Exception as e:
-        print(f"Fetch error: {e}")
-        
-    print("Using Fallback 150 Coins List...")
-    return FALLBACK_150_COINS[:limit]
+        print(f"Error fetching symbols: {e}")
+    return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
-SYMBOLS = get_top_volume_usdt_pairs(150)
+def fetch_bybit_klines(symbol, interval='15', limit=100):
+    """Candle Data ලබාගැනීම"""
+    url = f"https://api.bybit.com/v5/market/kline?category=spot&symbol={symbol}&interval={interval}&limit={limit}"
+    try:
+        res = requests.get(url, timeout=10).json()
+        if res.get('retCode') == 0:
+            list_data = res['result']['list']
+            list_data.reverse()
+            df = pd.DataFrame(list_data, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
+            df[['close', 'high', 'low', 'volume']] = df[['close', 'high', 'low', 'volume']].astype(float)
+            return df
+    except Exception as e:
+        print(f"Error fetching candles for {symbol}: {e}")
+    return None
 
-def get_binance_data(symbol, interval='15m', limit=150):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    res = requests.get(url, headers=headers, timeout=10)
-    data = res.json()
+# --- INDICATORS & STRATEGY ---
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+def run_bot():
+    symbols = fetch_top_symbols(150)
+    print(f"Scanning {len(symbols)} coins from Bybit...")
     
-    if not isinstance(data, list) or len(data) < 50:
-        print(f"Data fetch failed for {symbol}: {data}") # Error එක බලාගැනීමට එකතු කළ කොටස
-        return None
+    signals_found = 0
+    for symbol in symbols:
+        df = fetch_bybit_klines(symbol)
+        if df is None or len(df) < 50:
+            continue
+            
+        df['rsi'] = calculate_rsi(df['close'])
+        current_price = df['close'].iloc[-1]
+        last_rsi = df['rsi'].iloc[-1]
         
-    df = pd.DataFrame(data, columns=['time', 'open', 'high', 'low', 'close', 'volume', '_', '_', '_', '_', '_', '_'])
-    df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-    return df
-
-def analyze_institutional_setup():
-    print(f"Scanning {len(SYMBOLS)} Most Traded Coins...")
-    
-    for symbol in SYMBOLS:
-        try:
-            # 1H Trend Data
-            df_1h = get_binance_data(symbol, interval='1h', limit=150)
-            if df_1h is None or len(df_1h) < 100:
-                continue
-                
-            df_1h['ema200'] = ta.trend.ema_indicator(df_1h['close'], window=100)
-            trend_1h = "BULLISH" if df_1h['close'].iloc[-1] > df_1h['ema200'].iloc[-1] else "BEARISH"
-
-            # 15m Execution Data
-            df = get_binance_data(symbol, interval='15m', limit=100)
-            if df is None or len(df) < 30:
-                continue
+        # Simple Signal logic (RSI Oversold/Overbought)
+        signal_type = None
+        if last_rsi < 35:
+            signal_type = "BUY"
+        elif last_rsi > 65:
+            signal_type = "SELL"
             
-            df['vol_ma'] = df['volume'].rolling(window=20).mean()
-
-            recent_high = df['high'].iloc[-20:-2].max()
-            recent_low = df['low'].iloc[-20:-2].min()
-
-            last = df.iloc[-1]
-            prev = df.iloc[-2]
-
-            sweep_buy = (df['low'].iloc[-3:-1].min() < recent_low) and (prev['close'] > recent_low)
-            choch_buy = last['close'] > prev['high']
+        if signal_type:
+            signals_found += 1
+            print(f"SUCCESS: {signal_type} Signal for {symbol} | Price: {current_price} | RSI: {round(last_rsi, 2)}")
             
-            sweep_sell = (df['high'].iloc[-3:-1].max() > recent_high) and (prev['close'] < recent_high)
-            choch_sell = last['close'] < prev['low']
+            if sheet:
+                try:
+                    sheet.append_row([symbol, signal_type, float(current_price), round(float(last_rsi), 2)])
+                except Exception as e:
+                    print(f"Failed to append to Google Sheet: {e}")
 
-            # --- ලිහිල් කළ කොන්දේසි ---
-            volume_spike = last['volume'] > (last['vol_ma'] * 1.0)
-            fib_0618_buy = True  
-            fib_0618_sell = True 
-
-            # BUY Signal
-            if (trend_1h == "BULLISH") and sweep_buy and choch_buy and volume_spike and fib_0618_buy:
-                entry = round(last['close'], 4 if last['close'] < 1 else 2)
-                sl = round(recent_low * 0.998, 4 if last['close'] < 1 else 2)
-                risk = max(entry - sl, 0.0001)
-                
-                tp1 = round(entry + (risk * 2.0), 4 if last['close'] < 1 else 2)
-                tp2 = round(entry + (risk * 3.5), 4 if last['close'] < 1 else 2)
-
-                payload = {
-                    "Pair": symbol,
-                    "Type": "BUY 🟢 (SMC/ICT)",
-                    "Entry": entry,
-                    "TP1": tp1,
-                    "TP2": tp2,
-                    "SL": sl,
-                    "Status": "ACTIVE ⏳",
-                    "Profit": "0%",
-                    "Key": "VIP2026"
-                }
-                requests.post(SHEETBEST_URL, json=payload)
-                print(f"SUCCESS: Buy Signal Generated for {symbol}!")
-
-            # SELL Signal
-            elif (trend_1h == "BEARISH") and sweep_sell and choch_sell and volume_spike and fib_0618_sell:
-                entry = round(last['close'], 4 if last['close'] < 1 else 2)
-                sl = round(recent_high * 1.002, 4 if last['close'] < 1 else 2)
-                risk = max(sl - entry, 0.0001)
-                
-                tp1 = round(entry - (risk * 2.0), 4 if last['close'] < 1 else 2)
-                tp2 = round(entry - (risk * 3.5), 4 if last['close'] < 1 else 2)
-
-                payload = {
-                    "Pair": symbol,
-                    "Type": "SELL 🔴 (SMC/ICT)",
-                    "Entry": entry,
-                    "TP1": tp1,
-                    "TP2": tp2,
-                    "SL": sl,
-                    "Status": "ACTIVE ⏳",
-                    "Profit": "0%",
-                    "Key": "VIP2026"
-                }
-                requests.post(SHEETBEST_URL, json=payload)
-                print(f"SUCCESS: Sell Signal Generated for {symbol}!")
-
-        except Exception as e:
-            print(f"Error analyzing {symbol}: {e}")
+    print(f"Finished! Total Signals Found: {signals_found}")
 
 if __name__ == "__main__":
-    analyze_institutional_setup()
+    run_bot()
