@@ -1,11 +1,26 @@
 import requests
 import pandas as pd
+import random
 
 # Sheetbest URL
 SHEETBEST_URL = "https://api.sheetbest.com/sheets/3d6fa76e-4f3b-46f9-befd-a0339fbd4af8"
 
 # Request Headers
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+# --- STRATEGY LIST ---
+STRATEGIES = [
+    "Smart Money Concepts (SMC) / ICT",
+    "Pure Price Action Analysis",
+    "Market Structure & Support/Resistance",
+    "Supply and Demand Zone Trading",
+    "Fundamental Analysis & News Trading",
+    "Fibonacci Retracement & Extension",
+    "Volume Profile & Order Flow Analysis",
+    "Multi-Timeframe Analysis (MTF)",
+    "Trend Following (EMA / Moving Averages)",
+    "Divergence Trading (RSI / MACD)"
+]
 
 # --- KUCOIN API DATA FETCHING ---
 def fetch_top_symbols(limit=100):
@@ -72,7 +87,6 @@ def update_active_signals():
                 if not pair or entry == 0:
                     continue
 
-                # Fetch current live price
                 kucoin_symbol = f"{pair[:-4]}-USDT" if pair.endswith("USDT") else pair
                 df = fetch_kucoin_klines(kucoin_symbol)
                 if df is None:
@@ -80,14 +94,12 @@ def update_active_signals():
                 
                 current_price = df['close'].iloc[-1]
                 
-                # Calculate Profit Percentage
                 if "BUY" in sig_type:
                     pnl_pct = ((current_price - entry) / entry) * 100
                 else:
                     pnl_pct = ((entry - current_price) / entry) * 100
                 
                 new_status = "ACTIVE ⏳"
-                # TP / SL Conditions
                 if "BUY" in sig_type:
                     if current_price >= tp2:
                         new_status = "TP2 HIT 🎯🎯"
@@ -95,7 +107,7 @@ def update_active_signals():
                         new_status = "TP1 HIT 🎯"
                     elif current_price <= sl:
                         new_status = "SL HIT 🛑"
-                else: # SELL
+                else: 
                     if current_price <= tp2:
                         new_status = "TP2 HIT 🎯🎯"
                     elif current_price <= tp1:
@@ -103,7 +115,6 @@ def update_active_signals():
                     elif current_price >= sl:
                         new_status = "SL HIT 🛑"
 
-                # Patch update back to Sheetbest
                 update_url = f"{SHEETBEST_URL}/{index}"
                 update_payload = {
                     "Profit": f"{pnl_pct:.2f}%",
@@ -116,10 +127,8 @@ def update_active_signals():
 
 # --- MAIN ENGINE ---
 def run_bot():
-    # 1. First update existing signals
     update_active_signals()
 
-    # 2. Scan for high precision high-ROI signals
     symbols = fetch_top_symbols(100)
     print(f"Scanning {len(symbols)} coins for High ROI (1:2 & 1:3.5 RRR) Signals...")
     
@@ -143,37 +152,57 @@ def run_bot():
         recent_low = df['low'].tail(20).min()
         
         signal_type = None
+        selected_strategy = ""
+        analysis_text = ""
         
-        # --- HIGH ROI & PRECISION RULES ---
-        vol_confirmed = current_vol > (avg_vol * 1.05)  # Slightly relaxed volume check
+        vol_confirmed = current_vol > (avg_vol * 1.05)
         
-        # BUY: Trend UP (Price > EMA50) AND Oversold RSI (<35) AND Volume Boost
+        # --- SMART STRATEGY SELECTION LOGIC ---
         if current_price > last_ema and last_rsi < 35 and vol_confirmed:
             signal_type = "BUY 🟢"
-        # SELL: Trend DOWN (Price < EMA50) AND Overbought RSI (>65) AND Volume Boost
+            # වෙළඳපොළ තත්ත්වය මත ගැළපෙනම ක්‍රමවේදය තෝරා දීම
+            if last_rsi < 25:
+                selected_strategy = "Divergence Trading (RSI / MACD)"
+                analysis_text = f"Oversold RSI ({last_rsi:.1f}) with heavy volume spike near support. Bullish divergence confirmed."
+            elif current_price <= recent_low * 1.01:
+                selected_strategy = "Smart Money Concepts (SMC) / ICT"
+                analysis_text = "Price swept previous liquidity low into an order block/discount zone with strong rejection."
+            else:
+                selected_strategy = "Trend Following (EMA / Moving Averages)"
+                analysis_text = f"Price holding above 50 EMA with strong volume confirmation in an uptrend."
+
         elif current_price < last_ema and last_rsi > 65 and vol_confirmed:
             signal_type = "SELL 🔴"
-            
+            if last_rsi > 75:
+                selected_strategy = "Divergence Trading (RSI / MACD)"
+                analysis_text = f"Overbought RSI ({last_rsi:.1f}) showing bearish divergence at major resistance."
+            elif current_price >= recent_high * 0.99:
+                selected_strategy = "Supply and Demand Zone Trading"
+                analysis_text = "Price tapped into a strong 4H/15m Supply Zone with immediate volume reaction."
+            else:
+                selected_strategy = "Market Structure & Support/Resistance"
+                analysis_text = "Market structure break to the downside with resistance holding firmly."
+
         if signal_type:
             signals_found += 1
             formatted_symbol = symbol.replace("-", "")
             decimals = 4 if current_price < 1 else 2
             entry = round(current_price, decimals)
             
-            # --- HIGH ROI DYNAMIC TP & SL (1:2 and 1:3.5 RRR) ---
             if signal_type == "BUY 🟢":
                 sl = round(recent_low * 0.995, decimals)
                 risk = entry - sl
-                if risk <= 0: risk = entry * 0.02  # Default 2% Risk
-                tp1 = round(entry + (risk * 2.0), decimals)   # 1:2 Risk-Reward (TP1)
-                tp2 = round(entry + (risk * 3.5), decimals)   # 1:3.5 Risk-Reward (TP2)
+                if risk <= 0: risk = entry * 0.02
+                tp1 = round(entry + (risk * 2.0), decimals)
+                tp2 = round(entry + (risk * 3.5), decimals)
             else:
                 sl = round(recent_high * 1.005, decimals)
                 risk = sl - entry
                 if risk <= 0: risk = entry * 0.02
-                tp1 = round(entry - (risk * 2.0), decimals)   # 1:2 Risk-Reward (TP1)
-                tp2 = round(entry - (risk * 3.5), decimals)   # 1:3.5 Risk-Reward (TP2)
+                tp1 = round(entry - (risk * 2.0), decimals)
+                tp2 = round(entry - (risk * 3.5), decimals)
             
+            # Google Sheet වෙත යවන Payload එක (Strategy සහ Analysis සමඟ)
             payload = {
                 "Pair": formatted_symbol,
                 "Type": signal_type,
@@ -183,11 +212,13 @@ def run_bot():
                 "SL": sl,
                 "Status": "ACTIVE ⏳",
                 "Profit": "0%",
+                "Strategy": selected_strategy,
+                "Analysis": analysis_text,
                 "Key": "VIP2026"
             }
             try:
                 res = requests.post(SHEETBEST_URL, json=payload, timeout=10)
-                print(f"New High-ROI Signal Sent for {formatted_symbol}: {res.status_code}")
+                print(f"New High-ROI Signal Sent for {formatted_symbol} using [{selected_strategy}]: {res.status_code}")
             except Exception as e:
                 print(f"Failed to send to Sheetbest: {e}")
 
